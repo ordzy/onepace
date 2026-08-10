@@ -424,6 +424,11 @@ select.search-input:disabled { opacity: 0.5; cursor: not-allowed; }
   background: rgba(0,0,0,.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  animation: backdropFade .3s ease-out;
+}
+@keyframes backdropFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .modal-card {
   position: relative;
