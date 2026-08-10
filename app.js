@@ -1117,21 +1117,36 @@ function findSyncEpisode() {
   }
   
   let match = null;
+  let isEnd = false;
   for (const arc of state.data.arcs) {
     for (const ep of arc.episodes) {
       if (!ep.anime) continue;
+      
+      let maxNum = 0;
       const parts = ep.anime.split(',').map(s => s.trim());
+      for (const part of parts) {
+        if (part.includes('-')) {
+          const end = parseInt(part.split('-')[1], 10);
+          if (end > maxNum) maxNum = end;
+        } else {
+          const single = parseInt(part, 10);
+          if (single > maxNum) maxNum = single;
+        }
+      }
+
       for (const part of parts) {
         if (part.includes('-')) {
           const [start, end] = part.split('-').map(s => parseInt(s, 10));
           if (num >= start && num <= end) {
             match = { arc, ep };
+            isEnd = (num === maxNum);
             break;
           }
         } else {
           const single = parseInt(part, 10);
           if (num === single) {
             match = { arc, ep };
+            isEnd = (num === maxNum);
             break;
           }
         }
@@ -1139,6 +1154,20 @@ function findSyncEpisode() {
       if (match) break;
     }
     if (match) break;
+  }
+
+  let nextEp = null;
+  if (match && isEnd) {
+    const arcIdx = state.data.arcs.indexOf(match.arc);
+    let next = match.arc.episodes.find(e => e.ep === match.ep.ep + 1 && e.lang === match.ep.lang);
+    if (!next) next = match.arc.episodes.find(e => e.ep === match.ep.ep + 1);
+    
+    let nextArc = match.arc;
+    if (!next && arcIdx + 1 < state.data.arcs.length) {
+      nextArc = state.data.arcs[arcIdx + 1];
+      next = nextArc.episodes.find(e => e.ep === 1 && e.lang === match.ep.lang) || nextArc.episodes.find(e => e.ep === 1);
+    }
+    if (next) nextEp = { arc: nextArc, ep: next };
   }
 
   if (match) {
@@ -1154,6 +1183,10 @@ function findSyncEpisode() {
           <button class="btn btn-primary" style="margin-top: 16px; align-self: flex-start; padding: 6px 14px; font-size: 13px;" onclick="closeSyncModal(); playEpisode(${match.arc.season}, ${match.ep.ep}, '${match.ep.lang}', true)">
             ▶ Play Episode ${match.ep.ep}
           </button>
+          ${nextEp ? `
+          <button class="btn btn-secondary" style="margin-top: 8px; align-self: flex-start; padding: 6px 14px; font-size: 13px;" onclick="closeSyncModal(); playEpisode(${nextEp.arc.season}, ${nextEp.ep.ep}, '${nextEp.ep.lang}', true)">
+            ▶ Play Next Episode (${nextEp.ep.ep})
+          </button>` : ''}
         </div>
       </div>
     `;
