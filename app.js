@@ -512,7 +512,7 @@ function renderNav() {
         <div class="profile-menu hidden" id="profile-menu">
           <div class="profile-menu-header">${esc(currentUser.email)}</div>
           ${state.anilistToken ? 
-            `<div class="profile-menu-item" style="color: var(--blue); pointer-events: none; font-size: 13px;">AniList: ${state.anilistUser ? esc(state.anilistUser) : 'Connected'}</div>` :
+            `<button class="profile-menu-item" onclick="disconnectAniList()" style="color: var(--text-dim); font-size: 13px;">AniList: ${state.anilistUser ? esc(state.anilistUser) : 'Connected'} (Disconnect)</button>` :
             `<button class="profile-menu-item" onclick="connectAniList()" style="color: var(--blue);">Connect AniList</button>`
           }
           <button class="profile-menu-item" onclick="signOut()">Sign Out</button>
@@ -955,6 +955,19 @@ function connectAniList() {
   window.location.href = `https://anilist.co/api/v2/oauth/authorize?client_id=${clientId}&response_type=token`;
 }
 
+async function disconnectAniList() {
+  if (confirm('Are you sure you want to disconnect AniList?')) {
+    state.anilistToken = null;
+    state.anilistUser = null;
+    localStorage.removeItem('anilist.token');
+    if (supabaseClient && currentUser) {
+      await supabaseClient.auth.updateUser({ data: { anilistToken: null } });
+    }
+    renderNav();
+    showToast('AniList disconnected.');
+  }
+}
+
 async function syncAniListProgress(maxNum) {
   if (!state.anilistToken) return;
   try {
@@ -1151,6 +1164,9 @@ authForm.addEventListener('submit', async (e) => {
 });
 
 window.signOut = async function() {
+  state.anilistToken = null;
+  state.anilistUser = null;
+  localStorage.removeItem('anilist.token');
   if (supabaseClient) await supabaseClient.auth.signOut();
 };
 
@@ -1201,8 +1217,28 @@ async function syncProgressFromDB() {
 }
 
 if (supabaseClient) {
-  supabaseClient.auth.onAuthStateChange((event, session) => {
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
     currentUser = session?.user || null;
+    
+    if (currentUser) {
+      const localToken = localStorage.getItem('anilist.token');
+      const metaToken = currentUser.user_metadata?.anilistToken;
+      
+      if (localToken && localToken !== metaToken) {
+        await supabaseClient.auth.updateUser({ data: { anilistToken: localToken } });
+        state.anilistToken = localToken;
+      } else if (metaToken) {
+        state.anilistToken = metaToken;
+        localStorage.setItem('anilist.token', metaToken);
+      }
+      
+      if (state.anilistToken && !state.anilistUser) fetchAniListUser();
+    } else {
+      state.anilistToken = null;
+      state.anilistUser = null;
+      localStorage.removeItem('anilist.token');
+    }
+    
     renderNav();
     if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
       if (state.data) {
