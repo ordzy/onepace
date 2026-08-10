@@ -8,15 +8,15 @@ const CW_KEY = 'onepace.continueWatching';
 const VOL_KEY = 'onepace.volume';
 const state = {
   data: null,
-  cw: {},
   playlist: [],
-  index: -1,
+  index: 0,
   currentArc: null,
-  searchQuery: '',
-  filterMode: 'all',
-  prevHash: '',
-  viewMode: 'grid',
-  gridCols: 'auto'
+  prevHash: null,
+  viewMode: localStorage.getItem('viewMode') || 'grid',
+  gridCols: localStorage.getItem('gridCols') || 'auto',
+  anilistToken: localStorage.getItem('anilist.token') || null,
+  anilistUser: null,
+  anilistSyncedForThisEp: false
 };
 try {
   state.viewMode = localStorage.getItem('viewMode') || 'grid';
@@ -511,6 +511,10 @@ function renderNav() {
         <button class="nav-btn" id="btn-profile">Profile</button>
         <div class="profile-menu hidden" id="profile-menu">
           <div class="profile-menu-header">${esc(currentUser.email)}</div>
+          ${state.anilistToken ? 
+            `<div class="profile-menu-item" style="color: var(--blue); pointer-events: none; font-size: 13px;">AniList: ${state.anilistUser ? esc(state.anilistUser) : 'Connected'}</div>` :
+            `<button class="profile-menu-item" onclick="connectAniList()" style="color: var(--blue);">Connect AniList</button>`
+          }
           <button class="profile-menu-item" onclick="signOut()">Sign Out</button>
         </div>
       </div>
@@ -823,7 +827,11 @@ progress.addEventListener('pointercancel', () => {
 });
 
 video.addEventListener('click', () => { if (!seeking) togglePlay(); });
-video.addEventListener('timeupdate', () => { updateProgressUI(); saveProgress(); });
+video.addEventListener('timeupdate', () => { 
+  updateProgressUI(); 
+  saveProgress(); 
+  checkAniListSync(); 
+});
 video.addEventListener('progress', () => {
   const dur = video.duration || 0;
   if (!dur || !video.buffered.length) return;
@@ -915,12 +923,124 @@ document.addEventListener('keyup', (e) => {
   spaceBoost = false;
 });
 
+/* ============ AniList Sync ============ */
+async function fetchAniListUser() {
+  if (!state.anilistToken) return;
+  try {
+    const res = await fetch('https://graphql.anilist.co', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + state.anilistToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ query: '{ Viewer { name } }' })
+    });
+    const json = await res.json();
+    if (json.data && json.data.Viewer) {
+      state.anilistUser = json.data.Viewer.name;
+      renderNav();
+    } else {
+      localStorage.removeItem('anilist.token');
+      state.anilistToken = null;
+    }
+  } catch (e) {
+    console.error('AniList fetch error:', e);
+  }
+}
+
+function connectAniList() {
+  const clientId = '48239';
+  const redirectUri = window.location.origin + window.location.pathname; 
+  window.location.href = `https://anilist.co/api/v2/oauth/authorize?client_id=${clientId}&response_type=token`;
+}
+
+async function syncAniListProgress(maxNum) {
+  if (!state.anilistToken) return;
+  try {
+    const res = await fetch('https://graphql.anilist.co', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + state.anilistToken,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        query: `mutation ($mediaId: Int, $progress: Int) {
+          SaveMediaListEntry (mediaId: $mediaId, progress: $progress) {
+            id
+            progress
+          }
+        }`,
+        variables: { mediaId: 21, progress: maxNum }
+      })
+    });
+    const json = await res.json();
+    if (json.data && json.data.SaveMediaListEntry) {
+      showToast(`Synced episode ${maxNum} to AniList!`);
+    }
+  } catch (e) {
+    console.error('AniList sync error:', e);
+  }
+}
+
+function showToast(msg) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const t = document.createElement('div');
+  t.style.cssText = 'background: rgba(229,19,26,0.9); color: white; padding: 12px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); backdrop-filter: blur(8px); animation: fadeUp 0.3s ease forwards; transition: opacity 0.3s ease;';
+  t.innerText = msg;
+  container.appendChild(t);
+  setTimeout(() => {
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 300);
+  }, 4000);
+}
+
+function checkAniListSync() {
+  if (!state.anilistToken || state.anilistSyncedForThisEp) return;
+  if (!video.duration || (video.currentTime / video.duration) < 0.9) return;
+  
+  const ep = state.playlist[state.index];
+  if (!ep || !ep.anime) return;
+  
+  let maxNum = 0;
+  const parts = ep.anime.split(',').map(s => s.trim());
+  for (const part of parts) {
+    if (part.includes('-')) {
+      const end = parseInt(part.split('-')[1], 10);
+      if (end > maxNum) maxNum = end;
+    } else {
+      const single = parseInt(part, 10);
+      if (single > maxNum) maxNum = single;
+    }
+  }
+  
+  if (maxNum > 0) {
+    state.anilistSyncedForThisEp = true;
+    syncAniListProgress(maxNum);
+  }
+}
+
 /* ============ Boot ============ */
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch((err) => console.warn('SW error:', err));
 }
 (async () => {
   try {
+    const hash = location.hash;
+    if (hash.includes('access_token=')) {
+      const params = new URLSearchParams(hash.substring(1));
+      const token = params.get('access_token');
+      if (token) {
+        try { localStorage.setItem('anilist.token', token); state.anilistToken = token; } catch {}
+        location.hash = '#/';
+      }
+    }
+    if (state.anilistToken) {
+      fetchAniListUser();
+    }
+
     const [data] = await Promise.all([
       loadData(),
       new Promise((res) => setTimeout(res, 1000))
