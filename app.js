@@ -499,10 +499,10 @@ function saveProgress() {
 
 /* ============ Nav ============ */
 function renderNav() {
-  const onHome = !location.hash || location.hash === '#/' || location.hash === '';
-  navLinks.innerHTML = onHome
-    ? ''
-    : `<a class="nav-btn" href="#/">Home</a>`;
+  const links = document.getElementById('nav-links');
+  links.innerHTML = (location.hash === '#/' || location.hash === '') 
+    ? `<button class="nav-btn" onclick="openSyncModal()">Sync with One Piece</button>` 
+    : `<a class="nav-btn" href="#/">Home</a><button class="nav-btn" onclick="openSyncModal()">Sync with One Piece</button>`;
   
   const authDiv = document.getElementById('nav-auth');
   if (currentUser) {
@@ -1097,4 +1097,71 @@ function hideSplash() {
   if (!s) return;
   s.classList.add('out');
   setTimeout(() => s.remove(), 600);
+}
+
+/* ============ Sync Feature ============ */
+function openSyncModal() {
+  document.getElementById('sync-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('sync-input').focus(), 50);
+}
+function closeSyncModal() {
+  document.getElementById('sync-modal').classList.add('hidden');
+}
+function findSyncEpisode() {
+  const input = document.getElementById('sync-input').value;
+  const num = parseInt(input, 10);
+  const resultDiv = document.getElementById('sync-result');
+  if (isNaN(num) || num <= 0) {
+    resultDiv.innerHTML = `<div style="color: var(--red);">Please enter a valid episode number.</div>`;
+    return;
+  }
+  
+  let match = null;
+  for (const arc of state.data.arcs) {
+    for (const ep of arc.episodes) {
+      if (!ep.anime) continue;
+      const parts = ep.anime.split(',').map(s => s.trim());
+      for (const part of parts) {
+        if (part.includes('-')) {
+          const [start, end] = part.split('-').map(s => parseInt(s, 10));
+          if (num >= start && num <= end) {
+            match = { arc, ep };
+            break;
+          }
+        } else {
+          const single = parseInt(part, 10);
+          if (num === single) {
+            match = { arc, ep };
+            break;
+          }
+        }
+      }
+      if (match) break;
+    }
+    if (match) break;
+  }
+
+  if (match) {
+    resultDiv.innerHTML = `
+      <div class="cw-card" style="flex-direction: row; align-items: stretch; height: auto; cursor: default; background: rgba(255,255,255,0.03);">
+        <div class="cw-thumb" style="width: 120px;">
+          <img src="${esc(match.arc.poster)}" alt="">
+        </div>
+        <div class="cw-body" style="padding: 16px;">
+          <div class="cw-arc">${esc(match.arc.name)}</div>
+          <div class="cw-title">${esc(match.ep.title)}</div>
+          <div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">Covers anime eps: ${esc(match.ep.anime)}</div>
+          <button class="btn btn-primary" style="margin-top: 16px; align-self: flex-start; padding: 6px 14px; font-size: 13px;" onclick="closeSyncModal(); playEpisode(${match.arc.season}, ${match.ep.ep}, '${match.ep.lang}', true)">
+            ▶ Play Episode ${match.ep.ep}
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    resultDiv.innerHTML = `
+      <div style="color: var(--text-dim); font-size: 14px; text-align: center; padding: 24px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid var(--border);">
+        Unfortunately no One Pace episode has been released to cover episode ${num} at the moment.<br><br>
+        <span style="color: var(--text);">Watch One Piece instead.</span>
+      </div>`;
+  }
 }

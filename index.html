@@ -39,6 +39,23 @@
     </div>
   </div>
 
+  <!-- Sync Modal -->
+  <div id="sync-modal" class="modal hidden">
+    <div class="modal-backdrop" onclick="closeSyncModal()"></div>
+    <div class="modal-card" style="max-width: 500px;">
+      <button class="modal-close" onclick="closeSyncModal()">✕</button>
+      <div class="modal-body" style="padding: 32px 24px;">
+        <h2 style="margin-bottom: 12px; font-size: 20px;">Sync with One Piece</h2>
+        <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Enter an original One Piece episode number to instantly find the corresponding One Pace episode.</p>
+        <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+          <input type="number" id="sync-input" class="search-input" placeholder="e.g. 5" style="flex: 1; max-width: none;" onkeydown="if(event.key==='Enter') findSyncEpisode()" />
+          <button class="btn btn-primary" onclick="findSyncEpisode()" style="padding: 0 24px;">Find</button>
+        </div>
+        <div id="sync-result"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Auth Modal -->
   <div class="modal hidden" id="auth-modal">
     <div class="modal-backdrop" id="auth-backdrop"></div>
